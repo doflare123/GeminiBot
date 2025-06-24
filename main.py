@@ -44,7 +44,7 @@ class GeminiAPIManager:
         """Настраивает модель с текущим активным ключом"""
         if self.current_key_index < len(self.api_keys):
             genai.configure(api_key=self.api_keys[self.current_key_index])
-            self.model = genai.GenerativeModel('gemini-1.5-flash-latest')
+            self.model = genai.GenerativeModel('gemini-2.5-pro-prewiew-05-06')
             logging.info(f"Используется API ключ #{self.current_key_index + 1}")
     
     def switch_to_next_key(self):
