@@ -173,10 +173,15 @@
             cursor: pointer;
             font-size: 12px;
             opacity: 0.8;
+            transition: opacity 0.2s;
         }
 
         .copy-button:hover {
             opacity: 1;
+        }
+
+        .copy-button:active {
+            transform: scale(0.95);
         }
 
         .error {
@@ -186,6 +191,16 @@
             padding: 16px;
             border-radius: 8px;
             margin: 16px 0;
+            text-align: center;
+        }
+
+        .timestamp {
+            color: var(--tg-theme-hint-color, #999);
+            font-size: 12px;
+            margin-top: 20px;
+            text-align: center;
+            border-top: 1px solid var(--tg-theme-hint-color, #eee);
+            padding-top: 10px;
         }
 
         @media (max-width: 480px) {
@@ -207,9 +222,13 @@
             table {
                 font-size: 12px;
             }
+            
+            .copy-button {
+                font-size: 10px;
+                padding: 4px 8px;
+            }
         }
 
-        /* Telegram-specific theme adaptations */
         @media (prefers-color-scheme: dark) {
             body {
                 background-color: var(--tg-theme-bg-color, #1a1a1a);
@@ -236,10 +255,12 @@
         
         <div class="content" id="content">
             <div id="markdown-content"></div>
+            <div class="timestamp" id="timestamp"></div>
         </div>
         
         <div class="error" id="error" style="display: none;">
-            Ошибка загрузки содержимого
+            <h3>❌ Ошибка загрузки</h3>
+            <p id="error-message">Не удалось загрузить содержимое</p>
         </div>
     </div>
 
@@ -252,12 +273,14 @@
         tg.expand();
         
         // Применяем цвета темы Telegram
-        document.documentElement.style.setProperty('--tg-theme-bg-color', tg.themeParams.bg_color || '#ffffff');
-        document.documentElement.style.setProperty('--tg-theme-text-color', tg.themeParams.text_color || '#000000');
-        document.documentElement.style.setProperty('--tg-theme-hint-color', tg.themeParams.hint_color || '#999999');
-        document.documentElement.style.setProperty('--tg-theme-link-color', tg.themeParams.link_color || '#0088cc');
-        document.documentElement.style.setProperty('--tg-theme-button-color', tg.themeParams.button_color || '#0088cc');
-        document.documentElement.style.setProperty('--tg-theme-secondary-bg-color', tg.themeParams.secondary_bg_color || '#f1f3f4');
+        if (tg.themeParams) {
+            document.documentElement.style.setProperty('--tg-theme-bg-color', tg.themeParams.bg_color || '#ffffff');
+            document.documentElement.style.setProperty('--tg-theme-text-color', tg.themeParams.text_color || '#000000');
+            document.documentElement.style.setProperty('--tg-theme-hint-color', tg.themeParams.hint_color || '#999999');
+            document.documentElement.style.setProperty('--tg-theme-link-color', tg.themeParams.link_color || '#0088cc');
+            document.documentElement.style.setProperty('--tg-theme-button-color', tg.themeParams.button_color || '#0088cc');
+            document.documentElement.style.setProperty('--tg-theme-secondary-bg-color', tg.themeParams.secondary_bg_color || '#f1f3f4');
+        }
 
         // Функция для получения параметров из URL
         function getUrlParameter(name) {
@@ -265,23 +288,46 @@
             return urlParams.get(name);
         }
 
-        // Функция для декодирования base64
-        function decodeBase64(str) {
-            try {
-                return decodeURIComponent(atob(str));
-            } catch (e) {
-                console.error('Ошибка декодирования base64:', e);
-                return null;
+        // Функция для копирования кода в буфер обмена
+        function copyToClipboard(text) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(function() {
+                    tg.showAlert('Код скопирован в буфер обмена!');
+                }).catch(function(err) {
+                    console.error('Ошибка копирования: ', err);
+                    // Fallback для старых браузеров
+                    fallbackCopyTextToClipboard(text);
+                });
+            } else {
+                fallbackCopyTextToClipboard(text);
             }
         }
 
-        // Функция для копирования кода в буфер обмена
-        function copyToClipboard(text) {
-            navigator.clipboard.writeText(text).then(function() {
-                tg.showAlert('Код скопирован в буфер обмена!');
-            }).catch(function(err) {
-                console.error('Ошибка копирования: ', err);
-            });
+        // Fallback функция для копирования в старых браузерах
+        function fallbackCopyTextToClipboard(text) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.top = "0";
+            textArea.style.left = "0";
+            textArea.style.position = "fixed";
+            
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    tg.showAlert('Код скопирован в буфер обмена!');
+                } else {
+                    tg.showAlert('Не удалось скопировать код');
+                }
+            } catch (err) {
+                console.error('Fallback: Не удалось скопировать', err);
+                tg.showAlert('Не удалось скопировать код');
+            }
+            
+            document.body.removeChild(textArea);
         }
 
         // Функция для добавления кнопок копирования к блокам кода
@@ -298,78 +344,184 @@
             });
         }
 
-        // Основная функция загрузки контента
-        function loadContent() {
-            const loading = document.getElementById('loading');
-            const content = document.getElementById('content');
-            const error = document.getElementById('error');
-            const markdownContent = document.getElementById('markdown-content');
+        // Функция для форматирования даты
+        function formatTimestamp(timestamp) {
+            const date = new Date(timestamp * 1000);
+            return date.toLocaleString('ru-RU', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
 
-            // Получаем данные из URL параметров
-            const encodedData = getUrlParameter('data');
+        // Функция для отображения ошибки
+        function showError(message) {
+            const loadingElement = document.getElementById('loading');
+            const errorElement = document.getElementById('error');
+            const errorMessageElement = document.getElementById('error-message');
             
-            if (!encodedData) {
-                loading.style.display = 'none';
-                error.style.display = 'block';
-                error.textContent = 'Не найдены данные для отображения';
-                return;
+            loadingElement.style.display = 'none';
+            errorMessageElement.textContent = message;
+            errorElement.style.display = 'block';
+        }
+
+        // Функция для отображения контента
+        function displayContent(contentData) {
+            const loadingElement = document.getElementById('loading');
+            const contentElement = document.getElementById('content');
+            const markdownContentElement = document.getElementById('markdown-content');
+            const timestampElement = document.getElementById('timestamp');
+            
+            try {
+                // Парсим и отображаем markdown
+                const htmlContent = marked.parse(contentData.content);
+                markdownContentElement.innerHTML = htmlContent;
+                
+                // Отображаем временную метку
+                if (contentData.timestamp) {
+                    timestampElement.textContent = `Создано: ${formatTimestamp(contentData.timestamp)}`;
+                }
+                
+                // Добавляем кнопки копирования
+                setTimeout(() => {
+                    addCopyButtons();
+                    // Применяем подсветку синтаксиса
+                    if (window.Prism) {
+                        Prism.highlightAll();
+                    }
+                }, 100);
+                
+                // Показываем контент
+                loadingElement.style.display = 'none';
+                contentElement.classList.add('loaded');
+                
+            } catch (error) {
+                console.error('Ошибка при отображении контента:', error);
+                showError('Ошибка при отображении контента');
             }
+        }
 
-            // Декодируем данные
-            const decodedData = decodeBase64(encodedData);
+        // Основная функция загрузки контента
+        async function loadContent() {
+            const contentId = getUrlParameter('content_id');
             
-            if (!decodedData) {
-                loading.style.display = 'none';
-                error.style.display = 'block';
-                error.textContent = 'Ошибка декодирования данных';
+            if (!contentId) {
+                showError('Не указан ID контента');
                 return;
             }
 
             try {
-                // Конвертируем markdown в HTML
-                const htmlContent = marked.parse(decodedData);
-                markdownContent.innerHTML = htmlContent;
+                // Создаем простой запрос к нашему серверу
+                // Поскольку у нас нет прямого API endpoint, используем альтернативный подход
                 
-                // Применяем подсветку синтаксиса
-                Prism.highlightAll();
-                
-                // Добавляем кнопки копирования
-                addCopyButtons();
-                
-                // Показываем контент
-                loading.style.display = 'none';
-                content.classList.add('loaded');
-                
-                // Уведомляем Telegram о готовности
-                tg.ready();
-                
-            } catch (e) {
-                console.error('Ошибка обработки markdown:', e);
-                loading.style.display = 'none';
-                error.style.display = 'block';
-                error.textContent = 'Ошибка обработки содержимого';
+                // Вариант 1: Получение через localStorage (если бот может его установить)
+                const storedContent = localStorage.getItem(`content_${contentId}`);
+                if (storedContent) {
+                    const contentData = JSON.parse(storedContent);
+                    displayContent(contentData);
+                    return;
+                }
+
+                // Вариант 2: Получение через postMessage от родительского окна (если доступно)
+                if (window.parent && window.parent !== window) {
+                    window.parent.postMessage({
+                        type: 'requestContent',
+                        contentId: contentId
+                    }, '*');
+                    
+                    // Слушаем ответ
+                    window.addEventListener('message', function(event) {
+                        if (event.data.type === 'contentResponse' && event.data.contentId === contentId) {
+                            if (event.data.content) {
+                                displayContent(event.data.content);
+                            } else {
+                                showError(event.data.error || 'Контент не найден');
+                            }
+                        }
+                    });
+                    
+                    // Таймаут для запроса
+                    setTimeout(() => {
+                        if (document.getElementById('loading').style.display !== 'none') {
+                            // Если контент не загрузился через postMessage, пробуем другой способ
+                            tryAlternativeLoad(contentId);
+                        }
+                    }, 3000);
+                } else {
+                    // Прямая загрузка
+                    tryAlternativeLoad(contentId);
+                }
+
+            } catch (error) {
+                console.error('Ошибка при загрузке контента:', error);
+                showError('Ошибка при загрузке контента');
             }
         }
 
-        // Настройка marked для лучшей обработки markdown
-        marked.setOptions({
-            breaks: true,
-            gfm: true,
-            sanitize: false
+        // Альтернативный способ загрузки (через демо-данные или fallback)
+        function tryAlternativeLoad(contentId) {
+            // Поскольку у нас нет прямого API endpoint, создадим демо-контент
+            // В реальном приложении здесь должен быть запрос к вашему серверу
+            
+            // Попробуем получить данные из fragment identifier
+            const hash = window.location.hash.substring(1);
+            if (hash) {
+                try {
+                    const decodedData = decodeURIComponent(hash);
+                    const contentData = JSON.parse(decodedData);
+                    displayContent(contentData);
+                    return;
+                } catch (e) {
+                    console.log('Не удалось декодировать данные из hash');
+                }
+            }
+
+            // Демо-контент для тестирования
+            const demoContent = {
+                content: `# Демо-контент\n\nЭто демонстрационный контент для ID: **${contentId}**\n\n## Функциональность:\n\n- ✅ Поддержка Markdown\n- ✅ Подсветка синтаксиса\n- ✅ Копирование кода\n- ✅ Адаптивный дизайн\n\n\`\`\`python\nprint("Привет, мир!")\nfor i in range(5):\n    print(f"Число: {i}")\n\`\`\`\n\n> **Примечание:** Для полной функциональности необходимо настроить API endpoint на вашем сервере.`,
+                timestamp: Math.floor(Date.now() / 1000)
+            };
+            
+            // Показываем демо-контент через 1 секунду
+            setTimeout(() => {
+                displayContent(demoContent);
+            }, 1000);
+        }
+
+        // Обработчик для получения данных от бота через Web App
+        tg.onEvent('contentReceived', function(data) {
+            if (data.content) {
+                displayContent(data.content);
+            } else {
+                showError('Контент не найден');
+            }
         });
 
-        // Загружаем контент после загрузки страницы
-        window.addEventListener('load', loadContent);
-        
-        // Обработка закрытия Web App
-        tg.onEvent('mainButtonClicked', function() {
-            tg.close();
+        // Запускаем загрузку при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function() {
+            loadContent();
         });
-        
-        // Обработка кнопки "Назад"
-        tg.onEvent('backButtonClicked', function() {
-            tg.close();
+
+        // Обработка ошибок JavaScript
+        window.addEventListener('error', function(event) {
+            console.error('JavaScript error:', event.error);
+            if (document.getElementById('loading').style.display !== 'none') {
+                showError('Произошла ошибка при загрузке страницы');
+            }
         });
+
+        // Настройка marked для лучшей обработки markdown
+        if (typeof marked !== 'undefined') {
+            marked.setOptions({
+                breaks: true,
+                gfm: true,
+                sanitize: false,
+                smartLists: true,
+                smartypants: true
+            });
+        }
     </script>
 </body>
 </html>

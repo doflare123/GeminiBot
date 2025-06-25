@@ -2,7 +2,8 @@ import asyncio
 import logging
 import os
 import re
-import base64
+import hashlib
+import json
 from urllib.parse import quote
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 import io
@@ -21,6 +22,7 @@ load_dotenv()
 
 bot_token = os.getenv("BOT_KEY")
 
+# URL вашего Web App (замените на реальный URL после размещения)
 WEB_APP_URL = "https://doflare123.github.io/GeminiBot/"
 
 API_KEYS = [
@@ -36,6 +38,9 @@ API_KEYS = [key for key in API_KEYS if key is not None]
 
 if not API_KEYS:
     raise ValueError("Не найдено ни одного API ключа!")
+
+# Временное хранилище для больших текстов
+content_storage = {}
 
 class GeminiAPIManager:
     def __init__(self, api_keys):
@@ -163,11 +168,40 @@ def escape_markdown_v2(text: str) -> str:
     
     return text
 
-def create_web_app_url(text: str) -> str:
-    """Создает URL для Web App с закодированным текстом"""
-    # Кодируем текст в base64 для передачи через URL
-    encoded_text = base64.b64encode(text.encode('utf-8')).decode('utf-8')
-    return f"{WEB_APP_URL}?data={quote(encoded_text)}"
+def store_content(text: str, user_id: int) -> str:
+    """Сохраняет текст и возвращает уникальный ID"""
+    # Создаем уникальный ID на основе времени и user_id
+    content_id = hashlib.md5(f"{user_id}_{int(time.time())}_{text[:100]}".encode()).hexdigest()
+    
+    # Сохраняем контент с временной меткой для автоочистки
+    content_storage[content_id] = {
+        'text': text,
+        'user_id': user_id,
+        'timestamp': time.time()
+    }
+    
+    # Очищаем старые записи (старше 1 часа)
+    cleanup_old_content()
+    
+    return content_id
+
+def cleanup_old_content():
+    """Удаляет контент старше 1 часа"""
+    current_time = time.time()
+    expired_keys = [
+        key for key, value in content_storage.items() 
+        if current_time - value['timestamp'] > 3600  # 1 час
+    ]
+    
+    for key in expired_keys:
+        del content_storage[key]
+    
+    if expired_keys:
+        logging.info(f"Удалено {len(expired_keys)} устаревших записей")
+
+def create_web_app_url(content_id: str) -> str:
+    """Создает URL для Web App с ID контента"""
+    return f"{WEB_APP_URL}?content_id={content_id}"
 
 def should_use_webapp(text: str) -> bool:
     """Определяет, нужно ли использовать Web App для отображения текста"""
@@ -176,12 +210,15 @@ def should_use_webapp(text: str) -> bool:
 async def send_response(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str):
     """Отправляет ответ пользователю, используя Web App для длинных сообщений"""
     if should_use_webapp(text):
+        # Сохраняем контент и получаем ID
+        content_id = store_content(text, chat_id)
+        
         # Создаем краткое превью ответа
         preview = text[:500] + "..." if len(text) > 500 else text
         escaped_preview = escape_markdown_v2(preview)
         
         # Создаем кнопку для открытия Web App
-        webapp_url = create_web_app_url(text)
+        webapp_url = create_web_app_url(content_id)
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton(
                 "📖 Посмотреть полный ответ", 
@@ -214,6 +251,46 @@ async def send_response(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: 
         else:
             escaped_text = escape_markdown_v2(text)
             await context.bot.send_message(chat_id=chat_id, text=escaped_text, parse_mode="MarkdownV2")
+
+# Новый хендлер для получения контента по ID
+async def get_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает запросы на получение сохраненного контента"""
+    if not context.args:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Не указан ID контента"
+        )
+        return
+    
+    content_id = context.args[0]
+    
+    if content_id not in content_storage:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Контент не найден или истек срок его хранения"
+        )
+        return
+    
+    content_data = content_storage[content_id]
+    
+    # Проверяем, что пользователь запрашивает свой контент
+    if content_data['user_id'] != update.effective_chat.id:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="У вас нет доступа к этому контенту"
+        )
+        return
+    
+    # Возвращаем контент в JSON формате
+    response_data = {
+        'content': content_data['text'],
+        'timestamp': content_data['timestamp']
+    }
+    
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=json.dumps(response_data, ensure_ascii=False)
+    )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
@@ -290,10 +367,15 @@ if __name__ == '__main__':
     start_handler = CommandHandler('start', start)
     application.add_handler(start_handler)
     
+    # Новый хендлер для получения контента
+    get_content_handler = CommandHandler('get_content', get_content)
+    application.add_handler(get_content_handler)
+    
     message_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
     application.add_handler(message_handler)
     application.add_handler(MessageHandler(filters.PHOTO, handle_image))
     
     print(f"Бот запущен с {len(API_KEYS)} API ключами...")
     print(f"Web App URL: {WEB_APP_URL}")
+    print(f"Контент хранится в памяти до {len(content_storage)} записей")
     application.run_polling()
