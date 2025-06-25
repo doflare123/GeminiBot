@@ -21,8 +21,7 @@ load_dotenv()
 
 bot_token = os.getenv("BOT_KEY")
 
-# URL вашего Web App (замените на реальный URL после размещения)
-WEB_APP_URL = "http://localhost:5000/index.html"
+WEB_APP_URL = "https://doflare123.github.io/GeminiBot/"
 
 API_KEYS = [
     os.getenv("GEMINI_API_KEY_1"),
