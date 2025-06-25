@@ -1,7 +1,10 @@
+import asyncio
 import logging
 import os
 import re
-from telegram import Update
+import base64
+from urllib.parse import quote
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 import io
 from PIL import Image
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
@@ -17,6 +20,9 @@ logging.basicConfig(
 load_dotenv()
 
 bot_token = os.getenv("BOT_KEY")
+
+# URL вашего Web App (замените на реальный URL после размещения)
+WEB_APP_URL = "http://localhost:5000/index.html"
 
 API_KEYS = [
     os.getenv("GEMINI_API_KEY_1"),
@@ -158,10 +164,63 @@ def escape_markdown_v2(text: str) -> str:
     
     return text
 
+def create_web_app_url(text: str) -> str:
+    """Создает URL для Web App с закодированным текстом"""
+    # Кодируем текст в base64 для передачи через URL
+    encoded_text = base64.b64encode(text.encode('utf-8')).decode('utf-8')
+    return f"{WEB_APP_URL}?data={quote(encoded_text)}"
+
+def should_use_webapp(text: str) -> bool:
+    """Определяет, нужно ли использовать Web App для отображения текста"""
+    return len(text) > 2500
+
+async def send_response(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str):
+    """Отправляет ответ пользователю, используя Web App для длинных сообщений"""
+    if should_use_webapp(text):
+        # Создаем краткое превью ответа
+        preview = text[:500] + "..." if len(text) > 500 else text
+        escaped_preview = escape_markdown_v2(preview)
+        
+        # Создаем кнопку для открытия Web App
+        webapp_url = create_web_app_url(text)
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(
+                "📖 Посмотреть полный ответ", 
+                web_app=WebAppInfo(url=webapp_url)
+            )]
+        ])
+        
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"*Ответ получен\\!*\n\n{escaped_preview}\n\n_Ответ слишком длинный для отображения в чате\\. Нажмите кнопку ниже для просмотра полного ответа\\._",
+            parse_mode="MarkdownV2",
+            reply_markup=keyboard
+        )
+    else:
+        # Обычная отправка для коротких сообщений
+        max_message_length = 4000
+        
+        if len(text) > max_message_length:
+            # Разбиваем текст на части
+            chunks = []
+            for i in range(0, len(text), max_message_length):
+                chunks.append(text[i:i + max_message_length])
+            
+            for i, chunk in enumerate(chunks):
+                escaped_chunk = escape_markdown_v2(chunk)
+                await context.bot.send_message(chat_id=chat_id, text=escaped_chunk, parse_mode="MarkdownV2")
+                # Небольшая задержка между отправкой частей
+                if i < len(chunks) - 1:
+                    await asyncio.sleep(0.5)
+        else:
+            escaped_text = escape_markdown_v2(text)
+            await context.bot.send_message(chat_id=chat_id, text=escaped_text, parse_mode="MarkdownV2")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="Привет! Отправь мне любое сообщение, и я перешлю его нейросети Gemini."
+        text="Привет! Отправь мне любое сообщение, и я перешлю его нейросети Gemini.\n\n"
+             "📱 Для длинных ответов (более 2500 символов) я буду предлагать удобный просмотр через Web App."
     )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -174,9 +233,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.info(f"Получено сообщение от {chat_id}: {user_message}")
         
         response = await api_manager.generate_content_with_rotation(user_message)
-        escaped_text = escape_markdown_v2(response.text)
+        full_text = response.text
         
-        await context.bot.send_message(chat_id=chat_id, text=escaped_text, parse_mode="MarkdownV2")
+        # Отправляем ответ (функция сама решит, использовать ли Web App)
+        await send_response(context, chat_id, full_text)
+        
         await context.bot.delete_message(chat_id=chat_id, message_id=messageBot.message_id)
         
     except Exception as e:
@@ -193,12 +254,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id=chat_id, 
                 text=f"Произошла ошибка при обращении к Gemini: {e}"
             )
-        
+
 async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     prompt = update.message.caption or "Опиши это изображение."
     
-    messegaBot = await context.bot.send_message(chat_id=chat_id, text="Получил изображение, анализирую...")
+    messageBot = await context.bot.send_message(chat_id=chat_id, text="Получил изображение, анализирую...")
 
     try:
         photo_file = await update.message.photo[-1].get_file()
@@ -206,18 +267,15 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         img = Image.open(io.BytesIO(photo_bytes))
         
         response = await api_manager.generate_content_with_rotation([prompt, img])
-        escaped_text = escape_markdown_v2(response.text)
         
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=escaped_text,
-            parse_mode="MarkdownV2"
-        )
-        await context.bot.delete_message(chat_id=chat_id, message_id=messegaBot.message_id)
+        # Отправляем ответ (функция сама решит, использовать ли Web App)
+        await send_response(context, chat_id, response.text)
+        
+        await context.bot.delete_message(chat_id=chat_id, message_id=messageBot.message_id)
         
     except Exception as e:
         logging.error(f"Ошибка при обработке изображения от {chat_id}: {e}")
-        await context.bot.delete_message(chat_id=chat_id, message_id=messegaBot.message_id)
+        await context.bot.delete_message(chat_id=chat_id, message_id=messageBot.message_id)
         
         if "все api ключи исчерпаны" in str(e).lower():
             await context.bot.send_message(
@@ -226,7 +284,6 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         else:
             await context.bot.send_message(chat_id=chat_id, text=f"Произошла ошибка: {e}")
-
 
 if __name__ == '__main__':
     application = ApplicationBuilder().token(bot_token).build()
@@ -239,4 +296,5 @@ if __name__ == '__main__':
     application.add_handler(MessageHandler(filters.PHOTO, handle_image))
     
     print(f"Бот запущен с {len(API_KEYS)} API ключами...")
+    print(f"Web App URL: {WEB_APP_URL}")
     application.run_polling()

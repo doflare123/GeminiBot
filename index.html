@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ответ Gemini</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: var(--tg-theme-text-color, #000);
+            background-color: var(--tg-theme-bg-color, #fff);
+            padding: 16px;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+            background: var(--tg-theme-secondary-bg-color, #f8f9fa);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+            font-size: 18px;
+            color: var(--tg-theme-hint-color, #999);
+        }
+
+        .spinner {
+            border: 3px solid var(--tg-theme-hint-color, #f3f3f3);
+            border-top: 3px solid var(--tg-theme-button-color, #0088cc);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .content {
+            display: none;
+        }
+
+        .content.loaded {
+            display: block;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            color: var(--tg-theme-text-color, #000);
+            margin: 20px 0 10px 0;
+            font-weight: 600;
+        }
+
+        h1 { font-size: 28px; }
+        h2 { font-size: 24px; }
+        h3 { font-size: 20px; }
+        h4 { font-size: 18px; }
+        h5 { font-size: 16px; }
+        h6 { font-size: 14px; }
+
+        p {
+            margin: 12px 0;
+            text-align: justify;
+        }
+
+        ul, ol {
+            margin: 12px 0;
+            padding-left: 20px;
+        }
+
+        li {
+            margin: 6px 0;
+        }
+
+        blockquote {
+            border-left: 4px solid var(--tg-theme-button-color, #0088cc);
+            margin: 16px 0;
+            padding: 12px 16px;
+            background: var(--tg-theme-bg-color, rgba(0,136,204,0.1));
+            border-radius: 0 8px 8px 0;
+            font-style: italic;
+        }
+
+        code {
+            background: var(--tg-theme-bg-color, #f1f3f4);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+            font-size: 14px;
+            color: var(--tg-theme-text-color, #e91e63);
+        }
+
+        pre {
+            background: #2d3748;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 16px 0;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        pre code {
+            background: none;
+            color: #f7fafc;
+            padding: 0;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 16px 0;
+            font-size: 14px;
+        }
+
+        th, td {
+            border: 1px solid var(--tg-theme-hint-color, #ddd);
+            padding: 8px 12px;
+            text-align: left;
+        }
+
+        th {
+            background: var(--tg-theme-button-color, #0088cc);
+            color: white;
+            font-weight: 600;
+        }
+
+        tr:nth-child(even) {
+            background: var(--tg-theme-secondary-bg-color, #f9f9f9);
+        }
+
+        a {
+            color: var(--tg-theme-link-color, #0088cc);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .copy-button {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: var(--tg-theme-button-color, #0088cc);
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        .copy-button:hover {
+            opacity: 1;
+        }
+
+        .error {
+            background: #fee;
+            border: 1px solid #fcc;
+            color: #c00;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 16px 0;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 12px;
+                margin: 0;
+                border-radius: 0;
+            }
+            
+            body {
+                padding: 8px;
+            }
+            
+            pre {
+                font-size: 12px;
+                padding: 12px;
+            }
+            
+            table {
+                font-size: 12px;
+            }
+        }
+
+        /* Telegram-specific theme adaptations */
+        @media (prefers-color-scheme: dark) {
+            body {
+                background-color: var(--tg-theme-bg-color, #1a1a1a);
+                color: var(--tg-theme-text-color, #ffffff);
+            }
+            
+            .container {
+                background: var(--tg-theme-secondary-bg-color, #2a2a2a);
+            }
+            
+            code {
+                background: var(--tg-theme-bg-color, #3a3a3a);
+                color: var(--tg-theme-text-color, #ff6b9d);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            Загружаем ответ...
+        </div>
+        
+        <div class="content" id="content">
+            <div id="markdown-content"></div>
+        </div>
+        
+        <div class="error" id="error" style="display: none;">
+            Ошибка загрузки содержимого
+        </div>
+    </div>
+
+    <script>
+        // Инициализация Telegram Web App
+        const tg = window.Telegram.WebApp;
+        
+        // Настройка темы
+        tg.ready();
+        tg.expand();
+        
+        // Применяем цвета темы Telegram
+        document.documentElement.style.setProperty('--tg-theme-bg-color', tg.themeParams.bg_color || '#ffffff');
+        document.documentElement.style.setProperty('--tg-theme-text-color', tg.themeParams.text_color || '#000000');
+        document.documentElement.style.setProperty('--tg-theme-hint-color', tg.themeParams.hint_color || '#999999');
+        document.documentElement.style.setProperty('--tg-theme-link-color', tg.themeParams.link_color || '#0088cc');
+        document.documentElement.style.setProperty('--tg-theme-button-color', tg.themeParams.button_color || '#0088cc');
+        document.documentElement.style.setProperty('--tg-theme-secondary-bg-color', tg.themeParams.secondary_bg_color || '#f1f3f4');
+
+        // Функция для получения параметров из URL
+        function getUrlParameter(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
+
+        // Функция для декодирования base64
+        function decodeBase64(str) {
+            try {
+                return decodeURIComponent(atob(str));
+            } catch (e) {
+                console.error('Ошибка декодирования base64:', e);
+                return null;
+            }
+        }
+
+        // Функция для копирования кода в буфер обмена
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(function() {
+                tg.showAlert('Код скопирован в буфер обмена!');
+            }).catch(function(err) {
+                console.error('Ошибка копирования: ', err);
+            });
+        }
+
+        // Функция для добавления кнопок копирования к блокам кода
+        function addCopyButtons() {
+            const codeBlocks = document.querySelectorAll('pre code');
+            codeBlocks.forEach((block, index) => {
+                const button = document.createElement('button');
+                button.className = 'copy-button';
+                button.textContent = 'Копировать';
+                button.onclick = () => copyToClipboard(block.textContent);
+                
+                block.parentElement.style.position = 'relative';
+                block.parentElement.appendChild(button);
+            });
+        }
+
+        // Основная функция загрузки контента
+        function loadContent() {
+            const loading = document.getElementById('loading');
+            const content = document.getElementById('content');
+            const error = document.getElementById('error');
+            const markdownContent = document.getElementById('markdown-content');
+
+            // Получаем данные из URL параметров
+            const encodedData = getUrlParameter('data');
+            
+            if (!encodedData) {
+                loading.style.display = 'none';
+                error.style.display = 'block';
+                error.textContent = 'Не найдены данные для отображения';
+                return;
+            }
+
+            // Декодируем данные
+            const decodedData = decodeBase64(encodedData);
+            
+            if (!decodedData) {
+                loading.style.display = 'none';
+                error.style.display = 'block';
+                error.textContent = 'Ошибка декодирования данных';
+                return;
+            }
+
+            try {
+                // Конвертируем markdown в HTML
+                const htmlContent = marked.parse(decodedData);
+                markdownContent.innerHTML = htmlContent;
+                
+                // Применяем подсветку синтаксиса
+                Prism.highlightAll();
+                
+                // Добавляем кнопки копирования
+                addCopyButtons();
+                
+                // Показываем контент
+                loading.style.display = 'none';
+                content.classList.add('loaded');
+                
+                // Уведомляем Telegram о готовности
+                tg.ready();
+                
+            } catch (e) {
+                console.error('Ошибка обработки markdown:', e);
+                loading.style.display = 'none';
+                error.style.display = 'block';
+                error.textContent = 'Ошибка обработки содержимого';
+            }
+        }
+
+        // Настройка marked для лучшей обработки markdown
+        marked.setOptions({
+            breaks: true,
+            gfm: true,
+            sanitize: false
+        });
+
+        // Загружаем контент после загрузки страницы
+        window.addEventListener('load', loadContent);
+        
+        // Обработка закрытия Web App
+        tg.onEvent('mainButtonClicked', function() {
+            tg.close();
+        });
+        
+        // Обработка кнопки "Назад"
+        tg.onEvent('backButtonClicked', function() {
+            tg.close();
+        });
+    </script>
+</body>
+</html>
