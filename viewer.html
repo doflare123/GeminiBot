@@ -38,35 +38,32 @@
 <body>
   <div class="container">
     <div class="header" id="username">Загрузка...</div>
-    <pre id="output">Загрузка ответа...</pre>
+    <div id="output" style="white-space: pre-wrap; word-wrap: break-word;"></div>
   </div>
-
+  
   <script>
-    // Инициализация Telegram WebApp
     const tg = window.Telegram?.WebApp;
     if (tg) tg.expand();
-
-    // Отображение имени пользователя
+  
     const user = tg?.initDataUnsafe?.user;
     if (user) {
       document.getElementById("username").textContent = `👋 ${user.first_name}, вот ответ от Gemini:`;
     } else {
       document.getElementById("username").textContent = "Ответ от Gemini:";
     }
-
-    // Получение и отображение текста из URL-хэша
-     try {
-        const hash = location.hash.slice(1);
-        const decoded = LZString.decompressFromEncodedURIComponent(hash);
-        if (decoded) {
-          const converter = new showdown.Converter();
-          document.getElementById("output").innerHTML = converter.makeHtml(decoded);
-        } else {
-          document.getElementById("output").textContent = "Нет данных для отображения.";
-        }
-      } catch(e) {
-        document.getElementById("output").textContent = "Ошибка декодирования данных: " + e;
+  
+    try {
+      const hash = location.hash.slice(1);
+      const decoded = LZString.decompressFromEncodedURIComponent(hash);
+      if (decoded) {
+        const converter = new showdown.Converter();
+        document.getElementById("output").innerHTML = converter.makeHtml(decoded);
+      } else {
+        document.getElementById("output").textContent = "Нет данных для отображения.";
       }
+    } catch(e) {
+      document.getElementById("output").textContent = "Ошибка декодирования данных: " + e;
+    }
   </script>
 </body>
 </html>
